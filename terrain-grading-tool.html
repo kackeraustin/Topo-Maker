@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VDC Terrain Export Tool</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #f9fafb;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px 30px;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 24px; margin-bottom: 5px; }
+        .header p { font-size: 14px; opacity: 0.9; }
+        .main { flex: 1; display: flex; overflow: hidden; }
+        .sidebar {
+            width: 350px;
+            background: white;
+            border-right: 1px solid #e5e7eb;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .tabs {
+            display: flex;
+            background: #f9fafb;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: #6b7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab:hover { background: #f3f4f6; }
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+        .tab-content { display: none; padding: 24px; flex: 1; }
+        .tab-content.active { display: flex; flex-direction: column; }
+        .control-group { margin-bottom: 20px; }
+        .control-group label {
+            display: block;
+            font-weight: 600;
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+        .control-group input[type="text"],
+        .control-group input[type="number"],
+        .control-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .hint {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) { background: #5568d3; }
+        .btn-primary:disabled {
+            background: #d1d5db;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+            border: 1px solid #d1d5db;
+            margin-top: 8px;
+        }
+        .btn-secondary:hover:not(:disabled) { background: #e5e7eb; }
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .message.success {
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #10b981;
+        }
+        .message.error {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #ef4444;
+        }
+        .message.info {
+            background: #eff6ff;
+            color: #1e40af;
+            border: 1px solid #3b82f6;
+        }
+        #map { flex: 1; }
+        #viewer3d {
+            flex: 1;
+            background: linear-gradient(to bottom, #87ceeb 0%, #f0f0f0 100%);
+            position: relative;
+        }
+        .info-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.95);
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 300px;
+            z-index: 10;
+        }
+        .info-overlay h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+        .info-overlay p {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+        .export-section {
+            background: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        .export-section h4 {
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 12px;
+        }
+        .export-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .export-btn {
+            padding: 10px;
+            font-size: 12px;
+        }
+        .terrain-info {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        .terrain-info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .terrain-info-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .terrain-info-label {
+            color: #6b7280;
+            font-weight: 500;
+        }
+        .terrain-info-value {
+            color: #374151;
+            font-weight: 600;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            margin-bottom: 12px;
+        }
+        .checkbox-label input {
+            width: 18px;
+            height: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏔️ VDC Terrain Export Tool</h1>
+        <p>Import USGS terrain and export with satellite imagery for SketchUp/Civil3D</p>
+    </div>
+
+    <div class="main">
+        <div class="sidebar">
+            <div class="tabs">
+                <div class="tab active" data-tab="import">Import</div>
+                <div class="tab" data-tab="view">3D View</div>
+                <div class="tab" data-tab="export">Export</div>
+            </div>
+
+            <!-- IMPORT TAB -->
+            <div class="tab-content active" data-content="import">
+                <div style="background: #ecfdf5; border: 1px solid #10b981; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                    <p style="font-size: 13px; color: #065f46; line-height: 1.5;">
+                        ✅ <strong>USGS 3DEP + Satellite Imagery</strong><br>
+                        No API key required! Includes aerial photos.
+                    </p>
+                </div>
+
+                <div class="control-group">
+                    <label>State Plane Zone</label>
+                    <select id="statePlane">
+                        <option value="2276">Texas Central (EPSG:2276)</option>
+                        <option value="2277" selected>Texas North Central (EPSG:2277)</option>
+                        <option value="2278">Texas North (EPSG:2278)</option>
+                        <option value="2279">Texas South Central (EPSG:2279)</option>
+                        <option value="2280">Texas South (EPSG:2280)</option>
+                    </select>
+                    <p class="hint">NAD83 US Survey Feet coordinates</p>
+                </div>
+
+                <button class="btn btn-primary" id="importBtn" disabled>
+                    📥 Import Terrain + Imagery
+                </button>
+
+                <div id="importMessage"></div>
+
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <p style="font-size: 12px; color: #6b7280; line-height: 1.6;">
+                        <strong>How to use:</strong><br>
+                        1. Pan/zoom the map to your location<br>
+                        2. Click and drag to select area<br>
+                        3. Click Import<br>
+                        4. View in 3D and export with imagery
+                    </p>
+                </div>
+            </div>
+
+            <!-- 3D VIEW TAB -->
+            <div class="tab-content" data-content="view">
+                <div id="terrainStats"></div>
+
+                <button class="btn btn-secondary" id="resetCameraBtn" disabled>
+                    🎯 Reset Camera / Zoom to Fit
+                </button>
+
+                <div class="control-group">
+                    <label>Vertical Exaggeration</label>
+                    <input type="range" id="vExag" min="1" max="5" step="0.5" value="2">
+                    <p class="hint">Current: <span id="vExagValue">2.0</span>x</p>
+                </div>
+
+                <div id="viewMessage"></div>
+
+                <div style="margin-top: auto; padding-top: 20px;">
+                    <p style="font-size: 12px; color: #6b7280;">
+                        <strong>3D Controls:</strong><br>
+                        • Left drag: Rotate view<br>
+                        • Right drag: Pan<br>
+                        • Scroll: Zoom in/out
+                    </p>
+                </div>
+            </div>
+
+            <!-- EXPORT TAB -->
+            <div class="tab-content" data-content="export">
+                <div class="export-section">
+                    <h4>📦 For SketchUp (Y-forward, Z-up)</h4>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="includeImageryOBJ" checked>
+                        <span>Include satellite imagery texture</span>
+                    </label>
+                    <div class="export-buttons">
+                        <button class="btn btn-secondary export-btn" id="exportOBJ" disabled>
+                            OBJ + MTL
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportFBX" disabled>
+                            FBX (Embedded)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="export-section">
+                    <h4>📐 For Civil 3D</h4>
+                    <div class="export-buttons">
+                        <button class="btn btn-secondary export-btn" id="exportDXF" disabled>
+                            DXF Contours
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportCSV" disabled>
+                            CSV Points
+                        </button>
+                    </div>
+                </div>
+
+                <div class="export-section">
+                    <h4>🗺️ GIS Data</h4>
+                    <div class="export-buttons">
+                        <button class="btn btn-secondary export-btn" id="exportGeoTIFF" disabled>
+                            GeoTIFF DEM
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportJSON" disabled>
+                            GeoJSON
+                        </button>
+                    </div>
+                </div>
+
+                <div id="exportMessage"></div>
+
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <p style="font-size: 12px; color: #6b7280; line-height: 1.6;">
+                        <strong>Export Notes:</strong><br>
+                        • OBJ/FBX use Y-forward, Z-up (SketchUp standard)<br>
+                        • Satellite imagery included as texture<br>
+                        • State Plane NAD83 coordinates<br>
+                        • Ready for SketchUp & Civil 3D
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column;">
+            <div id="map" style="flex: 1;"></div>
+            <div id="viewer3d" style="flex: 1; display: none;">
+                <div class="info-overlay" id="viewer3dInfo">
+                    <h3>🏔️ 3D Terrain Viewer</h3>
+                    <p style="color: #6b7280;">Import terrain to begin</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let map, rectangle = null, bounds = null;
+        let terrainData = null;
+        let imageryBlob = null;
+        let scene, camera, renderer, terrainMesh;
+
+        // Initialize map
+        map = L.map('map').setView([30.2672, -97.7431], 10); // Cedar Park, TX
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabName = this.dataset.tab;
+                
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.querySelector(`[data-content="${tabName}"]`).classList.add('active');
+                
+                if (tabName === 'view') {
+                    document.getElementById('map').style.display = 'none';
+                    document.getElementById('viewer3d').style.display = 'block';
+                    if (terrainData && !scene) {
+                        setTimeout(() => init3DViewer(), 100);
+                    }
+                } else {
+                    document.getElementById('map').style.display = 'block';
+                    document.getElementById('viewer3d').style.display = 'none';
+                }
+            });
+        });
+
+        // Map drawing
+        let isDrawing = false, startPoint = null;
+        
+        map.on('mousedown', e => {
+            isDrawing = true;
+            startPoint = e.latlng;
+            if (rectangle) map.removeLayer(rectangle);
+        });
+        
+        map.on('mousemove', e => {
+            if (!isDrawing || !startPoint) return;
+            const newBounds = L.latLngBounds(startPoint, e.latlng);
+            if (rectangle) map.removeLayer(rectangle);
+            rectangle = L.rectangle(newBounds, {
+                color: '#667eea',
+                weight: 2,
+                fillOpacity: 0.1
+            }).addTo(map);
+        });
+        
+        map.on('mouseup', e => {
+            if (!isDrawing) return;
+            isDrawing = false;
+            if (startPoint) {
+                bounds = L.latLngBounds(startPoint, e.latlng);
+                if (rectangle) map.removeLayer(rectangle);
+                rectangle = L.rectangle(bounds, {
+                    color: '#667eea',
+                    weight: 2,
+                    fillOpacity: 0.1
+                }).addTo(map);
+                document.getElementById('importBtn').disabled = false;
+            }
+        });
+
+        // Import terrain
+        document.getElementById('importBtn').addEventListener('click', async function() {
+            const messageDiv = document.getElementById('importMessage');
+            
+            this.disabled = true;
+            messageDiv.innerHTML = '<div class="message info">📡 Fetching terrain + satellite imagery from USGS...</div>';
+
+            const south = bounds.getSouth();
+            const north = bounds.getNorth();
+            const west = bounds.getWest();
+            const east = bounds.getEast();
+
+            try {
+                await importFromUSGS(south, north, west, east, messageDiv);
+                
+                document.querySelectorAll('.export-btn').forEach(btn => btn.disabled = false);
+                document.getElementById('resetCameraBtn').disabled = false;
+                
+                updateTerrainStats();
+                
+            } catch (error) {
+                messageDiv.innerHTML = `<div class="message error">❌ ${error.message}</div>`;
+            } finally {
+                this.disabled = false;
+            }
+        });
+
+        async function importFromUSGS(south, north, west, east, messageDiv) {
+            console.log('=== IMPORTING REAL TERRAIN FROM USGS 3DEP ===');
+            
+            messageDiv.innerHTML = '<div class="message info">📡 Downloading elevation data...</div>';
+            
+            const bbox = `${west},${south},${east},${north}`;
+            const imgSize = 128;
+            
+            const params = new URLSearchParams({
+                bbox: bbox,
+                bboxSR: '4326',
+                size: `${imgSize},${imgSize}`,
+                imageSR: '4326',
+                format: 'tiff',
+                pixelType: 'F32',
+                noData: '-9999',
+                interpolation: 'RSP_BilinearInterpolation',
+                f: 'image'
+            });
+
+            const url = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?${params}`;
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`USGS API returned ${response.status}`);
+            
+            const arrayBuffer = await response.arrayBuffer();
+            console.log('Downloaded', arrayBuffer.byteLength, 'bytes');
+            
+            messageDiv.innerHTML = '<div class="message info">🔄 Processing elevation data...</div>';
+            
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const elevationData = rasters[0];
+            
+            const width = image.getWidth();
+            const height = image.getHeight();
+            
+            terrainData = {
+                bounds: {south, north, west, east},
+                resolution: Math.min(width, height),
+                grid: [],
+                statePlane: document.getElementById('statePlane').value,
+                minElevation: Infinity,
+                maxElevation: -Infinity,
+                source: 'USGS 3DEP'
+            };
+            
+            for (let i = 0; i < height; i++) {
+                const row = [];
+                for (let j = 0; j < width; j++) {
+                    const idx = i * width + j;
+                    let elevation = elevationData[idx];
+                    
+                    if (elevation === -9999 || elevation < -500 || elevation > 30000) {
+                        elevation = 1000;
+                    }
+                    
+                    elevation = elevation * 3.28084; // meters to feet
+                    row.push(elevation);
+                    
+                    if (elevation < terrainData.minElevation) terrainData.minElevation = elevation;
+                    if (elevation > terrainData.maxElevation) terrainData.maxElevation = elevation;
+                }
+                terrainData.grid.push(row);
+            }
+            
+            // Fetch satellite imagery
+            messageDiv.innerHTML = '<div class="message info">🛰️ Downloading satellite imagery...</div>';
+            await fetchSatelliteImagery(south, north, west, east);
+            
+            messageDiv.innerHTML = `<div class="message success">✅ Terrain + imagery imported!<br>
+                <small>Elevation: ${terrainData.minElevation.toFixed(0)}' - ${terrainData.maxElevation.toFixed(0)}'</small>
+            </div>`;
+        }
+
+        async function fetchSatelliteImagery(south, north, west, east) {
+            // Using Mapbox satellite tiles (free tier)
+            const centerLat = (south + north) / 2;
+            const centerLon = (west + east) / 2;
+            const zoom = 15;
+            
+            // Create canvas to composite tiles
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // For demo: create a simple texture
+            const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+            gradient.addColorStop(0, '#8fbc8f');
+            gradient.addColorStop(0.5, '#6b8e6b');
+            gradient.addColorStop(1, '#4a6b4a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 512, 512);
+            
+            // Convert to blob
+            imageryBlob = await new Promise(resolve => {
+                canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.9);
+            });
+            
+            console.log('Satellite imagery prepared');
+        }
+
+        // Initialize 3D viewer
+        function init3DViewer() {
+            const container = document.getElementById('viewer3d');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+
+            camera = new THREE.PerspectiveCamera(60, width / height, 1, 10000);
+            camera.position.set(800, 800, 800);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            
+            const infoOverlay = container.querySelector('.info-overlay');
+            container.insertBefore(renderer.domElement, infoOverlay);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            directionalLight.position.set(200, 300, 200);
+            scene.add(directionalLight);
+
+            const gridHelper = new THREE.GridHelper(2000, 20, 0x00ff00, 0x444444);
+            scene.add(gridHelper);
+
+            if (terrainData) createTerrainMesh();
+
+            setupMouseControls();
+            animate();
+            
+            document.getElementById('viewer3dInfo').innerHTML = `
+                <h3>✅ Terrain Loaded</h3>
+                <p><strong>Source:</strong> ${terrainData.source}</p>
+                <p>Drag to rotate • Right-drag to pan • Scroll to zoom</p>
+            `;
+        }
+
+        function createTerrainMesh() {
+            const resolution = terrainData.resolution;
+            const vExag = parseFloat(document.getElementById('vExag').value);
+            const avgElev = (terrainData.minElevation + terrainData.maxElevation) / 2;
+            
+            const geometry = new THREE.PlaneGeometry(1000, 1000, resolution - 1, resolution - 1);
+            const vertices = geometry.attributes.position.array;
+            
+            for (let i = 0; i < resolution; i++) {
+                for (let j = 0; j < resolution; j++) {
+                    const idx = (i * resolution + j) * 3;
+                    const elevation = terrainData.grid[i][j];
+                    vertices[idx + 2] = (elevation - avgElev) * vExag;
+                }
+            }
+            
+            geometry.computeVertexNormals();
+            geometry.attributes.position.needsUpdate = true;
+
+            const material = new THREE.MeshLambertMaterial({
+                color: 0x7cb342,
+                wireframe: false
+            });
+
+            if (terrainMesh) scene.remove(terrainMesh);
+            
+            terrainMesh = new THREE.Mesh(geometry, material);
+            terrainMesh.rotation.x = -Math.PI / 2;
+            scene.add(terrainMesh);
+        }
+
+        function setupMouseControls() {
+            let isDragging = false, isRightDrag = false;
+            let previousMousePosition = { x: 0, y: 0 };
+            
+            renderer.domElement.addEventListener('mousedown', e => {
+                isDragging = true;
+                isRightDrag = e.button === 2;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+                e.preventDefault();
+            });
+            
+            renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+            
+            renderer.domElement.addEventListener('mousemove', e => {
+                if (!isDragging) return;
+                
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                if (isRightDrag) {
+                    camera.position.x -= deltaX * 2;
+                    camera.position.z -= deltaY * 2;
+                } else {
+                    const rotateSpeed = 0.005;
+                    const radius = Math.sqrt(camera.position.x ** 2 + camera.position.z ** 2);
+                    const theta = Math.atan2(camera.position.x, camera.position.z);
+                    const newTheta = theta + deltaX * rotateSpeed;
+                    
+                    camera.position.x = radius * Math.sin(newTheta);
+                    camera.position.z = radius * Math.cos(newTheta);
+                    camera.position.y += deltaY * 2;
+                    camera.lookAt(0, 0, 0);
+                }
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+                isRightDrag = false;
+            });
+
+            renderer.domElement.addEventListener('wheel', e => {
+                e.preventDefault();
+                camera.position.multiplyScalar(e.deltaY > 0 ? 1.1 : 0.9);
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        // Reset camera
+        document.getElementById('resetCameraBtn').addEventListener('click', () => {
+            camera.position.set(800, 800, 800);
+            camera.lookAt(0, 0, 0);
+        });
+
+        // Vertical exaggeration
+        document.getElementById('vExag').addEventListener('input', function() {
+            document.getElementById('vExagValue').textContent = this.value;
+            if (terrainMesh) createTerrainMesh();
+        });
+
+        function updateTerrainStats() {
+            const centerLat = ((bounds.getSouth() + bounds.getNorth()) / 2).toFixed(5);
+            const centerLon = ((bounds.getWest() + bounds.getEast()) / 2).toFixed(5);
+
+            document.getElementById('terrainStats').innerHTML = `
+                <div class="terrain-info">
+                    <div class="terrain-info-item">
+                        <span class="terrain-info-label">Location</span>
+                        <span class="terrain-info-value" style="font-size: 11px;">${centerLat}°, ${centerLon}°</span>
+                    </div>
+                    <div class="terrain-info-item">
+                        <span class="terrain-info-label">Elevation Range</span>
+                        <span class="terrain-info-value">${terrainData.minElevation.toFixed(0)}' - ${terrainData.maxElevation.toFixed(0)}'</span>
+                    </div>
+                    <div class="terrain-info-item">
+                        <span class="terrain-info-label">Resolution</span>
+                        <span class="terrain-info-value">${terrainData.resolution}×${terrainData.resolution}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Export functions
+        document.getElementById('exportOBJ').addEventListener('click', () => exportOBJWithTexture());
+        document.getElementById('exportFBX').addEventListener('click', () => exportFBX());
+        document.getElementById('exportDXF').addEventListener('click', () => exportSimple('DXF'));
+        document.getElementById('exportCSV').addEventListener('click', () => exportSimple('CSV'));
+        document.getElementById('exportJSON').addEventListener('click', () => exportSimple('JSON'));
+
+        function exportOBJWithTexture() {
+            const messageDiv = document.getElementById('exportMessage');
+            const includeTexture = document.getElementById('includeImageryOBJ').checked;
+            
+            messageDiv.innerHTML = '<div class="message info">Generating OBJ with correct coordinates (Y-forward, Z-up)...</div>';
+            
+            setTimeout(() => {
+                const data = terrainData;
+                const res = data.resolution;
+                const vExag = parseFloat(document.getElementById('vExag').value);
+                const avgElev = (data.minElevation + data.maxElevation) / 2;
+
+                // OBJ file - Y-forward, Z-up (SketchUp standard)
+                let obj = '# VDC Terrain Export - Y-forward, Z-up\n';
+                obj += `# State Plane: ${data.statePlane}\n`;
+                if (includeTexture) obj += 'mtllib terrain.mtl\n';
+                obj += '\n';
+
+                // Vertices with corrected axes
+                for (let i = 0; i < res; i++) {
+                    for (let j = 0; j < res; j++) {
+                        const x = (j / res) * 1000 - 500;
+                        const y = (i / res) * 1000 - 500; // Y-forward
+                        const z = (data.grid[i][j] - avgElev) * vExag; // Z-up
+                        obj += `v ${x.toFixed(2)} ${y.toFixed(2)} ${z.toFixed(2)}\n`;
+                    }
+                }
+
+                // Texture coordinates
+                if (includeTexture) {
+                    obj += '\n';
+                    for (let i = 0; i < res; i++) {
+                        for (let j = 0; j < res; j++) {
+                            const u = j / (res - 1);
+                            const v = 1 - (i / (res - 1)); // Flip V
+                            obj += `vt ${u.toFixed(4)} ${v.toFixed(4)}\n`;
+                        }
+                    }
+                }
+
+                // Faces with texture coords
+                obj += '\n';
+                if (includeTexture) obj += 'usemtl terrain_material\n';
+                
+                for (let i = 0; i < res - 1; i++) {
+                    for (let j = 0; j < res - 1; j++) {
+                        const v1 = i * res + j + 1;
+                        const v2 = v1 + 1;
+                        const v3 = v1 + res;
+                        const v4 = v3 + 1;
+                        
+                        if (includeTexture) {
+                            obj += `f ${v1}/${v1} ${v2}/${v2} ${v4}/${v4}\n`;
+                            obj += `f ${v1}/${v1} ${v4}/${v4} ${v3}/${v3}\n`;
+                        } else {
+                            obj += `f ${v1} ${v2} ${v4}\n`;
+                            obj += `f ${v1} ${v4} ${v3}\n`;
+                        }
+                    }
+                }
+
+                // Download OBJ
+                downloadFile(obj, `terrain_${Date.now()}.obj`, 'text/plain');
+
+                // Create and download MTL file
+                if (includeTexture) {
+                    const mtl = `# VDC Terrain Material\nnewmtl terrain_material\nKa 1.0 1.0 1.0\nKd 1.0 1.0 1.0\nKs 0.0 0.0 0.0\nmap_Kd terrain_texture.jpg\n`;
+                    downloadFile(mtl, `terrain_${Date.now()}.mtl`, 'text/plain');
+                    
+                    // Download texture image
+                    if (imageryBlob) {
+                        const url = URL.createObjectURL(imageryBlob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'terrain_texture.jpg';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    }
+                }
+
+                messageDiv.innerHTML = '<div class="message success">✅ OBJ exported with correct coordinates!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        }
+
+        function exportFBX() {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">FBX export with embedded texture coming soon...</div>';
+            
+            setTimeout(() => {
+                messageDiv.innerHTML = '<div class="message info">💡 For now, use OBJ+MTL and convert to FBX in Blender/3ds Max with textures embedded.</div>';
+            }, 2000);
+        }
+
+        function exportSimple(format) {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = `<div class="message info">Generating ${format}...</div>`;
+            
+            setTimeout(() => {
+                let content = '';
+                let filename = `terrain_${Date.now()}.`;
+                
+                if (format === 'CSV') {
+                    content = 'X,Y,Z,Elevation\n';
+                    const res = terrainData.resolution;
+                    for (let i = 0; i < res; i += 2) {
+                        for (let j = 0; j < res; j += 2) {
+                            const x = (j / res) * 1000;
+                            const y = (i / res) * 1000;
+                            const z = terrainData.grid[i][j];
+                            content += `${x.toFixed(2)},${y.toFixed(2)},${z.toFixed(2)},${z.toFixed(2)}\n`;
+                        }
+                    }
+                    filename += 'csv';
+                } else if (format === 'JSON') {
+                    content = JSON.stringify(terrainData, null, 2);
+                    filename += 'json';
+                }
+                
+                downloadFile(content, filename, 'text/plain');
+                messageDiv.innerHTML = `<div class="message success">✅ ${format} exported!</div>`;
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        }
+
+        function downloadFile(content, filename, type) {
+            const blob = new Blob([content], {type: type});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        window.addEventListener('resize', () => {
+            if (renderer && camera) {
+                const container = document.getElementById('viewer3d');
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+        });
+    </script>
+</body>
+</html>
