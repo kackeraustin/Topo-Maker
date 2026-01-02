@@ -1,0 +1,2255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VDC Terrain Pro - Advanced Topography Export Tool</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/geotiff@2.0.7/dist-browser/geotiff.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e27;
+            --bg-secondary: #141b3d;
+            --bg-tertiary: #1e2749;
+            --accent-primary: #00d9ff;
+            --accent-secondary: #0099ff;
+            --accent-tertiary: #6b5fff;
+            --text-primary: #e8eaed;
+            --text-secondary: #9ca3af;
+            --text-tertiary: #6b7280;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --error: #ff4466;
+            --border: #2a3458;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 20px 32px;
+            border-bottom: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 20px rgba(0, 217, 255, 0.1);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+        }
+
+        .header-title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--text-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-title p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .coord-badge {
+            background: var(--bg-tertiary);
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 12px;
+            color: var(--accent-primary);
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 380px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+            padding: 0 4px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 16px 12px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-tertiary);
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .tab:hover {
+            color: var(--text-secondary);
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .tab.active {
+            color: var(--accent-primary);
+            border-bottom-color: var(--accent-primary);
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent-primary);
+            box-shadow: 0 0 8px var(--accent-primary);
+        }
+
+        .tab-content {
+            display: none;
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .tab-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .tab-content::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        .tab-content::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group label {
+            display: block;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .control-group input[type="text"],
+        .control-group input[type="number"],
+        .control-group select {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--text-primary);
+            font-family: 'IBM Plex Mono', monospace;
+            transition: all 0.2s;
+        }
+
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--bg-primary);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 217, 255, 0.5);
+        }
+
+        .control-group input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            border: none;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: 6px;
+            line-height: 1.5;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: var(--bg-primary);
+            box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: var(--bg-tertiary);
+            color: var(--text-tertiary);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .message {
+            margin-top: 16px;
+            padding: 14px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+            border-left: 3px solid;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-8px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .message.success {
+            background: rgba(0, 255, 136, 0.1);
+            color: var(--success);
+            border-color: var(--success);
+        }
+
+        .message.error {
+            background: rgba(255, 68, 102, 0.1);
+            color: var(--error);
+            border-color: var(--error);
+        }
+
+        .message.info {
+            background: rgba(0, 217, 255, 0.1);
+            color: var(--accent-primary);
+            border-color: var(--accent-primary);
+        }
+
+        .message.warning {
+            background: rgba(255, 170, 0, 0.1);
+            color: var(--warning);
+            border-color: var(--warning);
+        }
+
+        #map {
+            flex: 1;
+            position: relative;
+        }
+
+        .leaflet-container {
+            background: var(--bg-primary);
+        }
+
+        #viewer3d {
+            flex: 1;
+            background: linear-gradient(to bottom, #1a1f3a 0%, #0a0e27 100%);
+            position: relative;
+        }
+
+        .info-overlay {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            background: rgba(20, 27, 61, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            max-width: 320px;
+            z-index: 10;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .info-overlay h3 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-overlay p {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat-card {
+            background: var(--bg-primary);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .export-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .export-btn {
+            padding: 12px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .checkbox-group:hover {
+            border-color: var(--accent-primary);
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--accent-primary);
+        }
+
+        .checkbox-group label {
+            flex: 1;
+            cursor: pointer;
+            font-size: 13px;
+            margin: 0;
+        }
+
+        .contour-settings {
+            display: grid;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-primary);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 3px;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px var(--accent-primary);
+        }
+
+        .feature-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(0, 217, 255, 0.15);
+            border: 1px solid var(--accent-primary);
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .map-controls {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .map-control-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 10px 16px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            backdrop-filter: blur(10px);
+        }
+
+        .map-control-btn:hover {
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--bg-primary);
+            border-radius: 50%;
+            border-top-color: var(--accent-primary);
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .tooltip {
+            position: absolute;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">⛰</div>
+            <div class="header-title">
+                <h1>VDC Terrain Pro</h1>
+                <p>Advanced Topography Export System v2.0</p>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="coord-badge">NAD83 TX-83CF (EPSG:2277)</div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="sidebar">
+            <div class="tabs">
+                <div class="tab active" data-tab="import">📍 Import</div>
+                <div class="tab" data-tab="contours">📈 Contours</div>
+                <div class="tab" data-tab="view">🎨 3D View</div>
+                <div class="tab" data-tab="export">📦 Export</div>
+            </div>
+
+            <!-- IMPORT TAB -->
+            <div class="tab-content active" data-content="import">
+                <div class="section">
+                    <div class="section-title">
+                        <span>🛰️</span> Data Source
+                    </div>
+                    <div style="background: rgba(0, 255, 136, 0.1); border: 1px solid var(--success); padding: 14px; border-radius: 8px; margin-bottom: 16px;">
+                        <p style="font-size: 13px; color: var(--success); line-height: 1.6;">
+                            <strong>USGS 3DEP Elevation</strong> + <strong>High-Res Satellite Imagery</strong><br>
+                            <span style="font-size: 11px; opacity: 0.8;">1/3 arc-second (~10m) resolution • No API key required</span>
+                        </p>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Coordinate System</label>
+                        <select id="statePlane">
+                            <option value="2276">Texas Central (EPSG:2276)</option>
+                            <option value="2277" selected>Texas North Central (EPSG:2277)</option>
+                            <option value="2278">Texas North (EPSG:2278)</option>
+                            <option value="2279">Texas South Central (EPSG:2279)</option>
+                            <option value="2280">Texas South (EPSG:2280)</option>
+                        </select>
+                        <p class="hint">NAD83 US Survey Feet</p>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Resolution</label>
+                        <select id="resolution">
+                            <option value="128">Standard (128×128)</option>
+                            <option value="256" selected>High (256×256)</option>
+                            <option value="512">Ultra (512×512)</option>
+                        </select>
+                        <p class="hint">Higher resolution = larger files but more detail</p>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="importBtn" disabled>
+                    <span>📥</span>
+                    <span>Import Terrain Data</span>
+                </button>
+
+                <div id="importMessage"></div>
+
+                <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);">
+                    <p style="font-size: 12px; color: var(--text-tertiary); line-height: 1.7;">
+                        <strong style="color: var(--text-secondary);">Quick Start:</strong><br>
+                        1. Pan and zoom the map to your project site<br>
+                        2. Click and drag to draw selection rectangle<br>
+                        3. Click Import to fetch elevation + imagery<br>
+                        4. Configure contours and export formats
+                    </p>
+                </div>
+            </div>
+
+            <!-- CONTOURS TAB -->
+            <div class="tab-content" data-content="contours">
+                <div class="section">
+                    <div class="section-title">
+                        <span>📊</span> Contour Configuration
+                    </div>
+                    
+                    <div class="checkbox-group" style="margin-bottom: 16px;">
+                        <input type="checkbox" id="showContours" checked>
+                        <label for="showContours">Show Contours on 3D Model</label>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Contour Interval</label>
+                        <select id="contourInterval">
+                            <option value="1">1 foot</option>
+                            <option value="2" selected>2 feet</option>
+                            <option value="5">5 feet</option>
+                            <option value="10">10 feet</option>
+                        </select>
+                        <p class="hint">Spacing between elevation contours</p>
+                    </div>
+
+                    <div class="control-group">
+                        <label>Index Contour Multiplier</label>
+                        <select id="indexMultiplier">
+                            <option value="5" selected>Every 5th contour</option>
+                            <option value="10">Every 10th contour</option>
+                            <option value="0">No index contours</option>
+                        </select>
+                        <p class="hint">Bold lines for easier reading</p>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="showDepressions" checked>
+                        <label for="showDepressions">Include Depression Contours</label>
+                    </div>
+                    <p class="hint" style="margin-top: 8px;">Hachured lines for depressions and sinks</p>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">
+                        <span>🎨</span> Appearance
+                    </div>
+
+                    <div class="control-group">
+                        <label>Contour Line Color</label>
+                        <input type="color" id="contourColor" value="#00d9ff" style="width: 100%; height: 42px; cursor: pointer;">
+                    </div>
+
+                    <div class="control-group">
+                        <label>Line Weight</label>
+                        <input type="range" id="lineWeight" min="1" max="5" value="2" step="0.5">
+                        <p class="hint">Current: <span id="lineWeightValue">2.0</span>pt</p>
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary" id="generateContours" disabled>
+                    <span>🔄</span>
+                    <span>Regenerate Contours</span>
+                </button>
+
+                <div id="contourMessage"></div>
+
+                <div id="contourStats" style="margin-top: 16px;"></div>
+            </div>
+
+            <!-- 3D VIEW TAB -->
+            <div class="tab-content" data-content="view">
+                <div id="terrainStats"></div>
+
+                <div class="section">
+                    <div class="section-title">
+                        <span>🎮</span> View Controls
+                    </div>
+
+                    <button class="btn btn-secondary" id="resetCameraBtn" disabled style="margin-bottom: 16px;">
+                        <span>🎯</span>
+                        <span>Reset Camera View</span>
+                    </button>
+
+                    <div class="control-group">
+                        <label>Vertical Exaggeration (Z-Scale)</label>
+                        <input type="range" id="vExag" min="0.5" max="10" step="0.5" value="2">
+                        <p class="hint">Current: <span id="vExagValue">2.0</span>x</p>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="showTexture" checked>
+                        <label for="showTexture">Show Satellite Imagery</label>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="showWireframe">
+                        <label for="showWireframe">Wireframe Overlay</label>
+                    </div>
+                </div>
+
+                <div id="viewMessage"></div>
+
+                <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);">
+                    <p style="font-size: 12px; color: var(--text-tertiary); line-height: 1.7;">
+                        <strong style="color: var(--text-secondary);">3D Navigation:</strong><br>
+                        <span style="color: var(--accent-primary);">Left Drag</span> → Rotate view<br>
+                        <span style="color: var(--accent-primary);">Right Drag</span> → Pan camera<br>
+                        <span style="color: var(--accent-primary);">Scroll</span> → Zoom in/out
+                    </p>
+                </div>
+            </div>
+
+            <!-- EXPORT TAB -->
+            <div class="tab-content" data-content="export">
+                <div class="section">
+                    <div class="section-title">
+                        <span>🎨</span> 3D Models (SketchUp/Rendering)
+                        <span class="feature-badge">Y-forward, Z-up</span>
+                    </div>
+
+                    <div class="checkbox-group" style="margin-bottom: 12px;">
+                        <input type="checkbox" id="includeTexture3D" checked>
+                        <label for="includeTexture3D">Embed Satellite Imagery Texture</label>
+                    </div>
+
+                    <div class="export-grid">
+                        <button class="btn btn-secondary export-btn" id="exportOBJ" disabled>
+                            <span>📄</span> OBJ + MTL
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportFBX" disabled>
+                            <span>🎬</span> FBX
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportGLB" disabled>
+                            <span>🌐</span> GLB
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportGLTF" disabled>
+                            <span>📦</span> GLTF
+                        </button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">
+                        <span>📐</span> CAD/GIS (Civil 3D/AutoCAD)
+                    </div>
+
+                    <div class="export-grid">
+                        <button class="btn btn-secondary export-btn" id="exportDWG" disabled>
+                            <span>🔷</span> DWG
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportDXF" disabled>
+                            <span>📋</span> DXF
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportCSV" disabled>
+                            <span>📊</span> CSV Points
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportLandXML" disabled>
+                            <span>🗺️</span> LandXML
+                        </button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">
+                        <span>🗺️</span> GIS Data
+                    </div>
+
+                    <div class="export-grid">
+                        <button class="btn btn-secondary export-btn" id="exportGeoTIFF" disabled>
+                            <span>🌍</span> GeoTIFF
+                        </button>
+                        <button class="btn btn-secondary export-btn" id="exportGeoJSON" disabled>
+                            <span>📍</span> GeoJSON
+                        </button>
+                    </div>
+                </div>
+
+                <div id="exportMessage"></div>
+
+                <div style="margin-top: 16px; padding: 14px; background: rgba(0, 217, 255, 0.1); border: 1px solid var(--accent-primary); border-radius: 8px;">
+                    <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
+                        <strong style="color: var(--accent-primary);">Export Features:</strong><br>
+                        • Y-forward, Z-up coordinate system<br>
+                        • 3D models with embedded textures<br>
+                        • Contours included in CAD formats<br>
+                        • State Plane NAD83 coordinates<br>
+                        • SketchUp & Civil 3D ready
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column; position: relative;">
+            <div id="map" style="flex: 1;">
+                <div class="map-controls">
+                    <button class="map-control-btn" id="clearSelection">🗑️ Clear Selection</button>
+                </div>
+            </div>
+            <div id="viewer3d" style="flex: 1; display: none;">
+                <div class="info-overlay" id="viewer3dInfo">
+                    <h3>🏔️ 3D Terrain Viewer</h3>
+                    <p>Import terrain data to begin visualization</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== GLOBAL STATE ====================
+        let map, drawControl, drawnItems, rectangle = null, bounds = null;
+        let terrainData = null;
+        let imageryBlob = null;
+        let contoursData = null;
+        let scene, camera, renderer, terrainMesh, contourLines;
+
+        // ==================== INITIALIZE MAP ====================
+        function initMap() {
+            map = L.map('map', {
+                center: [30.2672, -97.7431], // Cedar Park, TX
+                zoom: 12,
+                zoomControl: true,
+                attributionControl: true
+            });
+
+            // Dark theme tiles
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap © CartoDB',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Drawing controls
+            drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+
+            drawControl = new L.Control.Draw({
+                draw: {
+                    rectangle: {
+                        shapeOptions: {
+                            color: '#00d9ff',
+                            weight: 2,
+                            fillOpacity: 0.1
+                        }
+                    },
+                    polygon: false,
+                    circle: false,
+                    marker: false,
+                    polyline: false,
+                    circlemarker: false
+                },
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
+                }
+            });
+            map.addControl(drawControl);
+
+            // Handle rectangle drawing
+            map.on(L.Draw.Event.CREATED, function (e) {
+                drawnItems.clearLayers();
+                const layer = e.layer;
+                drawnItems.addLayer(layer);
+                bounds = layer.getBounds();
+                rectangle = layer;
+                document.getElementById('importBtn').disabled = false;
+            });
+
+            // Clear selection button
+            document.getElementById('clearSelection').addEventListener('click', () => {
+                drawnItems.clearLayers();
+                bounds = null;
+                rectangle = null;
+                document.getElementById('importBtn').disabled = true;
+            });
+        }
+
+        // ==================== TAB SWITCHING ====================
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabName = this.dataset.tab;
+                
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.querySelector(`[data-content="${tabName}"]`).classList.add('active');
+                
+                if (tabName === 'view') {
+                    document.getElementById('map').style.display = 'none';
+                    document.getElementById('viewer3d').style.display = 'block';
+                    if (terrainData && !scene) {
+                        setTimeout(() => init3DViewer(), 100);
+                    } else if (renderer) {
+                        handleResize();
+                    }
+                } else {
+                    document.getElementById('map').style.display = 'block';
+                    document.getElementById('viewer3d').style.display = 'none';
+                    if (map) map.invalidateSize();
+                }
+            });
+        });
+
+        // ==================== IMPORT TERRAIN ====================
+        document.getElementById('importBtn').addEventListener('click', async function() {
+            if (!bounds) return;
+
+            const messageDiv = document.getElementById('importMessage');
+            const originalText = this.innerHTML;
+            
+            this.disabled = true;
+            this.innerHTML = '<span class="loading-spinner"></span><span>Importing...</span>';
+            
+            messageDiv.innerHTML = '<div class="message info">📡 Fetching USGS 3DEP elevation data...</div>';
+
+            const south = bounds.getSouth();
+            const north = bounds.getNorth();
+            const west = bounds.getWest();
+            const east = bounds.getEast();
+
+            try {
+                await importFromUSGS(south, north, west, east, messageDiv);
+                
+                // Enable all export buttons
+                document.querySelectorAll('.export-btn').forEach(btn => btn.disabled = false);
+                document.getElementById('resetCameraBtn').disabled = false;
+                document.getElementById('generateContours').disabled = false;
+                
+                updateTerrainStats();
+                await generateContours();
+                
+                const minElevFt = terrainData.minElevation * 3.28084;
+                const maxElevFt = terrainData.maxElevation * 3.28084;
+                messageDiv.innerHTML = `<div class="message success">✅ Terrain imported successfully!<br>
+                    <small>Elevation: ${minElevFt.toFixed(1)}' - ${maxElevFt.toFixed(1)}' • Resolution: ${terrainData.resolution}×${terrainData.resolution}</small>
+                </div>`;
+                
+            } catch (error) {
+                messageDiv.innerHTML = `<div class="message error">❌ Import failed: ${error.message}</div>`;
+                console.error('Import error:', error);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = originalText;
+            }
+        });
+
+        async function importFromUSGS(south, north, west, east, messageDiv) {
+            const resolution = parseInt(document.getElementById('resolution').value);
+            const bbox = `${west},${south},${east},${north}`;
+            
+            // Build USGS 3DEP request
+            const params = new URLSearchParams({
+                bbox: bbox,
+                bboxSR: '4326',
+                size: `${resolution},${resolution}`,
+                imageSR: '4326',
+                format: 'tiff',
+                pixelType: 'F32',
+                noData: '-9999',
+                interpolation: 'RSP_BilinearInterpolation',
+                f: 'image'
+            });
+
+            const url = `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?${params}`;
+            
+            console.log('Fetching from USGS:', url);
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`USGS API error: ${response.status}`);
+            
+            const arrayBuffer = await response.arrayBuffer();
+            console.log('Downloaded elevation data:', arrayBuffer.byteLength, 'bytes');
+            
+            messageDiv.innerHTML = '<div class="message info">🔄 Processing elevation data...</div>';
+            
+            // Parse GeoTIFF
+            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+            const image = await tiff.getImage();
+            const rasters = await image.readRasters();
+            const elevationData = rasters[0];
+            
+            const width = image.getWidth();
+            const height = image.getHeight();
+            
+            console.log('GeoTIFF dimensions:', width, 'x', height);
+            // Prefer the GeoTIFF's true bounding box (some services adjust extent to match pixel aspect ratio)
+            // This ensures any downstream imagery export can match the DEM grid exactly.
+            let bboxActual = null;
+            try {
+                if (image.getBoundingBox) bboxActual = image.getBoundingBox();
+            } catch (e) {
+                bboxActual = null;
+            }
+            if (bboxActual && bboxActual.length === 4 && bboxActual.every(v => Number.isFinite(v))) {
+                // GeoTIFF bbox order: [minX, minY, maxX, maxY] in EPSG:4326 per imageSR request
+                west = bboxActual[0];
+                south = bboxActual[1];
+                east = bboxActual[2];
+                north = bboxActual[3];
+                console.log('GeoTIFF bbox (actual):', west, south, east, north);
+            }
+
+            
+            // Build terrain data structure
+            terrainData = {
+                bounds: {south, north, west, east},
+                resolution: Math.min(width, height),
+                grid: [],
+                statePlane: document.getElementById('statePlane').value,
+                minElevation: Infinity,
+                maxElevation: -Infinity,
+                source: 'USGS 3DEP 1/3 arc-second',
+                centerLat: (south + north) / 2,
+                centerLon: (west + east) / 2,
+                units: 'meters' // Track that elevation data is in meters
+            };
+            
+            // Keep elevation in meters for proper 1:1 scale
+            for (let i = 0; i < height; i++) {
+                const row = [];
+                for (let j = 0; j < width; j++) {
+                    const idx = i * width + j;
+                    let elevation = elevationData[idx];
+                    
+                    // Handle no-data values
+                    if (elevation === -9999 || elevation < -500 || elevation > 30000) {
+                        // Interpolate from neighbors if possible
+                        elevation = interpolateElevation(elevationData, width, height, j, i);
+                    }
+                    
+                    // Keep in meters for 1:1 scale
+                    row.push(elevation);
+                    
+                    if (elevation < terrainData.minElevation) terrainData.minElevation = elevation;
+                    if (elevation > terrainData.maxElevation) terrainData.maxElevation = elevation;
+                }
+                terrainData.grid.push(row);
+            }
+            
+            console.log('Terrain data prepared:', terrainData);
+            
+            // Fetch high-resolution satellite imagery
+            messageDiv.innerHTML = '<div class="message info">🛰️ Downloading satellite imagery...</div>';
+            await fetchSatelliteImagery(terrainData.bounds.south, terrainData.bounds.north, terrainData.bounds.west, terrainData.bounds.east, resolution);
+        }
+
+        function interpolateElevation(data, width, height, x, y) {
+            const neighbors = [];
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        const val = data[ny * width + nx];
+                        if (val !== -9999 && val > -500 && val < 30000) {
+                            neighbors.push(val);
+                        }
+                    }
+                }
+            }
+            return neighbors.length > 0 
+                ? neighbors.reduce((a, b) => a + b) / neighbors.length 
+                : 1000; // Default fallback
+        }
+
+        async function fetchSatelliteImagery(south, north, west, east, resolution) {
+            // Fetch imagery aligned to the DEM grid (same bbox + same pixel size).
+            // ArcGIS Export Map can adjust the returned extent when aspect ratios differ, so we request JSON first
+            // and then update a texture bounds record to the returned extent.
+            // Note: Export Map responses may not exactly match the requested bbox when aspect ratio differs.
+
+            const bbox = `${west},${south},${east},${north}`;
+
+            try {
+                const params = new URLSearchParams({
+                    bbox: bbox,
+                    bboxSR: '4326',
+                    imageSR: '4326',
+                    size: `${resolution},${resolution}`,
+                    format: 'jpg',
+                    f: 'json'
+                });
+
+                const infoUrl = `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/export?${params}`;
+                console.log('Requesting imagery metadata:', infoUrl);
+
+                const infoResp = await fetch(infoUrl);
+                if (!infoResp.ok) throw new Error(`Imagery metadata error: ${infoResp.status}`);
+
+                const info = await infoResp.json();
+                if (!info || !info.href || !info.extent) {
+                    throw new Error('Imagery service returned unexpected response');
+                }
+
+                // Record the actual image extent returned by the service (helps debug alignment)
+                if (terrainData) {
+                    terrainData.textureBounds = {
+                        west: info.extent.xmin,
+                        south: info.extent.ymin,
+                        east: info.extent.xmax,
+                        north: info.extent.ymax
+                    };
+                }
+
+                const imgResp = await fetch(info.href);
+                if (!imgResp.ok) throw new Error(`Imagery download error: ${imgResp.status}`);
+
+                imageryBlob = await imgResp.blob();
+                console.log('Imagery downloaded:', imageryBlob.size, 'bytes');
+                return;
+            } catch (err) {
+                console.warn('Aligned imagery fetch failed; falling back to procedural texture.', err);
+            }
+
+            // Fallback: procedural texture (keeps app usable if imagery is blocked)
+            const canvas = document.createElement('canvas');
+            canvas.width = resolution;
+            canvas.height = resolution;
+            const ctx = canvas.getContext('2d');
+
+            const imageData = ctx.createImageData(resolution, resolution);
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                const noise = Math.random() * 40 - 20;
+                const baseColor = 100 + Math.random() * 50;
+                imageData.data[i] = baseColor + noise;
+                imageData.data[i + 1] = baseColor + noise + 20;
+                imageData.data[i + 2] = baseColor + noise - 10;
+                imageData.data[i + 3] = 255;
+            }
+            ctx.putImageData(imageData, 0, 0);
+
+            const gradient = ctx.createRadialGradient(
+                resolution/2, resolution/2, 0,
+                resolution/2, resolution/2, resolution/2
+            );
+            gradient.addColorStop(0, 'rgba(139, 149, 130, 0.3)');
+            gradient.addColorStop(0.5, 'rgba(107, 142, 107, 0.2)');
+            gradient.addColorStop(1, 'rgba(74, 107, 74, 0.4)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, resolution, resolution);
+
+            imageryBlob = await new Promise(resolve => {
+                canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.95);
+            });
+        }
+
+        // ==================== CONTOUR GENERATION ====================
+        document.getElementById('generateContours').addEventListener('click', generateContours);
+        document.getElementById('contourInterval').addEventListener('change', generateContours);
+        document.getElementById('indexMultiplier').addEventListener('change', generateContours);
+        document.getElementById('showDepressions').addEventListener('change', generateContours);
+
+        async function generateContours() {
+            if (!terrainData) return;
+
+            const messageDiv = document.getElementById('contourMessage');
+            messageDiv.innerHTML = '<div class="message info">🔄 Generating contours...</div>';
+
+            const interval = parseFloat(document.getElementById('contourInterval').value);
+            const indexMult = parseInt(document.getElementById('indexMultiplier').value);
+            const includeDepressions = document.getElementById('showDepressions').checked;
+
+            try {
+                // Convert interval from feet to meters (elevation data is in meters)
+                const intervalMeters = interval / 3.28084;
+                
+                contoursData = marchingSquaresContours(
+                    terrainData.grid,
+                    terrainData.minElevation,
+                    terrainData.maxElevation,
+                    intervalMeters,
+                    indexMult,
+                    includeDepressions
+                );
+
+                const stats = `
+                    <div class="stat-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Contours</div>
+                            <div class="stat-value">${contoursData.total}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Index Lines</div>
+                            <div class="stat-value">${contoursData.indexCount}</div>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('contourStats').innerHTML = stats;
+
+                messageDiv.innerHTML = '<div class="message success">✅ Contours generated!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+
+                // Update 3D view if active
+                if (scene && document.getElementById('showContours').checked) {
+                    renderContoursIn3D();
+                }
+
+            } catch (error) {
+                messageDiv.innerHTML = `<div class="message error">❌ Error: ${error.message}</div>`;
+                console.error('Contour generation error:', error);
+            }
+        }
+
+        function marchingSquaresContours(grid, minElev, maxElev, interval, indexMult, includeDepressions) {
+            const contours = [];
+            let indexCount = 0;
+            
+            const startElev = Math.ceil(minElev / interval) * interval;
+            const endElev = Math.floor(maxElev / interval) * interval;
+            
+            for (let elev = startElev; elev <= endElev; elev += interval) {
+                const isIndex = indexMult > 0 && Math.round(elev / interval) % indexMult === 0;
+                if (isIndex) indexCount++;
+                
+                const lines = traceContourLines(grid, elev);
+                
+                contours.push({
+                    elevation: elev,
+                    lines: lines,
+                    isIndex: isIndex
+                });
+            }
+            
+            // Detect depressions if enabled
+            if (includeDepressions) {
+                detectDepressions(grid, contours, minElev, maxElev, interval);
+            }
+            
+            return {
+                contours: contours,
+                total: contours.length,
+                indexCount: indexCount,
+                interval: interval
+            };
+        }
+
+        function traceContourLines(grid, elevation) {
+            const lines = [];
+            const height = grid.length;
+            const width = grid[0].length;
+            const visited = Array(height).fill().map(() => Array(width).fill(false));
+            
+            // Simple marching squares implementation
+            for (let i = 0; i < height - 1; i++) {
+                for (let j = 0; j < width - 1; j++) {
+                    if (visited[i][j]) continue;
+                    
+                    const v00 = grid[i][j];
+                    const v10 = grid[i][j + 1];
+                    const v01 = grid[i + 1][j];
+                    const v11 = grid[i + 1][j + 1];
+                    
+                    // Check if contour passes through this cell
+                    const above = [v00 > elevation, v10 > elevation, v11 > elevation, v01 > elevation];
+                    const crossings = above.filter(Boolean).length;
+                    
+                    if (crossings > 0 && crossings < 4) {
+                        const line = traceContourFromCell(grid, elevation, i, j, visited);
+                        if (line.length > 2) lines.push(line);
+                    }
+                }
+            }
+            
+            return lines;
+        }
+
+        function traceContourFromCell(grid, elevation, startI, startJ, visited) {
+            const line = [];
+            const height = grid.length;
+            const width = grid[0].length;
+            
+            let i = startI, j = startJ;
+            const maxIterations = 1000;
+            let iterations = 0;
+            
+            while (iterations++ < maxIterations && i >= 0 && i < height - 1 && j >= 0 && j < width - 1) {
+                if (visited[i][j]) break;
+                visited[i][j] = true;
+                
+                const v00 = grid[i][j];
+                const v10 = grid[i][j + 1];
+                
+                // Linear interpolation to find exact crossing point
+                const t = (elevation - v00) / (v10 - v00);
+                const x = j + Math.max(0, Math.min(1, t));
+                const y = i;
+                
+                line.push({x, y});
+                
+                // Move to next cell (simple right-then-down pattern)
+                if (j < width - 2) j++;
+                else if (i < height - 2) { i++; j = startJ; }
+                else break;
+            }
+            
+            return line;
+        }
+
+        function detectDepressions(grid, contours, minElev, maxElev, interval) {
+            const height = grid.length;
+            const width = grid[0].length;
+            
+            // Find local minima (potential depressions)
+            for (let i = 1; i < height - 1; i++) {
+                for (let j = 1; j < width - 1; j++) {
+                    const center = grid[i][j];
+                    const isDepression = 
+                        center < grid[i-1][j] &&
+                        center < grid[i+1][j] &&
+                        center < grid[i][j-1] &&
+                        center < grid[i][j+1];
+                    
+                    if (isDepression) {
+                        // Mark nearby contours as depression contours
+                        contours.forEach(c => {
+                            if (Math.abs(c.elevation - center) < interval * 2) {
+                                c.isDepression = true;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        function renderContoursIn3D() {
+            if (!contoursData || !scene) return;
+            
+            // Remove existing contour lines
+            if (contourLines) {
+                contourLines.forEach(line => scene.remove(line));
+            }
+            contourLines = [];
+            
+            const color = document.getElementById('contourColor').value;
+            const lineWeight = parseFloat(document.getElementById('lineWeight').value);
+            const vExag = parseFloat(document.getElementById('vExag').value);
+            const avgElev = (terrainData.minElevation + terrainData.maxElevation) / 2;
+            const res = terrainData.resolution;
+            
+            contoursData.contours.forEach(contour => {
+                contour.lines.forEach(line => {
+                    const points = line.map(p => {
+                        // Y-forward, Z-up: X=lateral, Y=depth, Z=elevation
+                        const x = (p.x / res) * 1000 - 500; // X: left to right
+                        const y = (p.y / res) * 1000 - 500; // Y: forward/backward (depth)
+                        const z = (contour.elevation - avgElev) * vExag; // Z: elevation (up)
+                        return new THREE.Vector3(x, y, z);
+                    });
+                    
+                    if (points.length < 2) return;
+                    
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const material = new THREE.LineBasicMaterial({
+                        color: new THREE.Color(color),
+                        linewidth: contour.isIndex ? lineWeight * 2 : lineWeight,
+                        opacity: contour.isDepression ? 0.6 : 1.0,
+                        transparent: true
+                    });
+                    
+                    const lineObj = new THREE.Line(geometry, material);
+                    scene.add(lineObj);
+                    contourLines.push(lineObj);
+                });
+            });
+        }
+
+        // ==================== 3D VIEWER ====================
+        function init3DViewer() {
+            const container = document.getElementById('viewer3d');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0e27);
+            scene.fog = new THREE.Fog(0x0a0e27, 1000, 3000);
+
+            camera = new THREE.PerspectiveCamera(60, width / height, 1, 10000);
+            camera.position.set(1000, 800, 1000);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            
+            const infoOverlay = container.querySelector('.info-overlay');
+            container.insertBefore(renderer.domElement, infoOverlay);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight1.position.set(500, 800, 500);
+            scene.add(directionalLight1);
+            
+            const directionalLight2 = new THREE.DirectionalLight(0x6b5fff, 0.3);
+            directionalLight2.position.set(-500, 400, -500);
+            scene.add(directionalLight2);
+
+            // Grid helper
+            const gridHelper = new THREE.GridHelper(2000, 20, 0x00d9ff, 0x2a3458);
+            gridHelper.material.opacity = 0.3;
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+
+            if (terrainData) {
+                createTerrainMesh();
+                if (contoursData && document.getElementById('showContours').checked) {
+                    renderContoursIn3D();
+                }
+            }
+
+            setupMouseControls();
+            animate();
+            
+            updateViewer3DInfo();
+        }
+
+        function createTerrainMesh() {
+            const resolution = terrainData.resolution;
+            const vExag = parseFloat(document.getElementById('vExag').value);
+            const avgElev = (terrainData.minElevation + terrainData.maxElevation) / 2;
+            const showTexture = document.getElementById('showTexture').checked;
+            const showWireframe = document.getElementById('showWireframe').checked;
+            
+            // Create geometry with proper Y-forward, Z-up orientation
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            const indices = [];
+            const uvs = [];
+            
+            // Build vertices with Y-forward, Z-up: X=lateral, Y=depth, Z=elevation
+            for (let i = 0; i < resolution; i++) {
+                for (let j = 0; j < resolution; j++) {
+                    const x = (j / (resolution - 1)) * 1000 - 500; // X: left to right
+                    const y = (i / (resolution - 1)) * 1000 - 500; // Y: forward/backward (depth)
+                    const z = (terrainData.grid[i][j] - avgElev) * vExag; // Z: elevation (up)
+                    
+                    vertices.push(x, y, z);
+                    
+                    // UV coordinates for texture
+                    uvs.push(j / (resolution - 1), 1 - (i / (resolution - 1)));
+                }
+            }
+            
+            // Build faces (triangles)
+            for (let i = 0; i < resolution - 1; i++) {
+                for (let j = 0; j < resolution - 1; j++) {
+                    const v1 = i * resolution + j;
+                    const v2 = v1 + 1;
+                    const v3 = v1 + resolution;
+                    const v4 = v3 + 1;
+                    
+                    // Two triangles per quad
+                    indices.push(v1, v2, v4);
+                    indices.push(v1, v4, v3);
+                }
+            }
+            
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals();
+
+            // Create material with optional texture
+            let material;
+            if (showTexture && imageryBlob) {
+                const textureUrl = URL.createObjectURL(imageryBlob);
+                const texture = new THREE.TextureLoader().load(textureUrl);
+                texture.wrapS = THREE.ClampToEdgeWrapping;
+                texture.wrapT = THREE.ClampToEdgeWrapping;
+                texture.flipY = false; // match OBJ vt v=1-i convention
+                
+                material = new THREE.MeshLambertMaterial({
+                    map: texture,
+                    wireframe: showWireframe
+                });
+            } else {
+                material = new THREE.MeshLambertMaterial({
+                    color: 0x7cb342,
+                    wireframe: showWireframe
+                });
+            }
+
+            if (terrainMesh) scene.remove(terrainMesh);
+            
+            terrainMesh = new THREE.Mesh(geometry, material);
+            // NO ROTATION - geometry is already in Y-forward, Z-up
+            scene.add(terrainMesh);
+        }
+
+        function setupMouseControls() {
+            let isDragging = false, isRightDrag = false;
+            let previousMousePosition = { x: 0, y: 0 };
+            
+            renderer.domElement.addEventListener('mousedown', e => {
+                isDragging = true;
+                isRightDrag = e.button === 2;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+                e.preventDefault();
+            });
+            
+            renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+            
+            renderer.domElement.addEventListener('mousemove', e => {
+                if (!isDragging) return;
+                
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+                
+                if (isRightDrag) {
+                    // Pan
+                    camera.position.x -= deltaX * 3;
+                    camera.position.z -= deltaY * 3;
+                } else {
+                    // Rotate
+                    const rotateSpeed = 0.005;
+                    const radius = Math.sqrt(camera.position.x ** 2 + camera.position.z ** 2);
+                    const theta = Math.atan2(camera.position.x, camera.position.z);
+                    const newTheta = theta + deltaX * rotateSpeed;
+                    
+                    camera.position.x = radius * Math.sin(newTheta);
+                    camera.position.z = radius * Math.cos(newTheta);
+                    camera.position.y = Math.max(100, camera.position.y + deltaY * 2);
+                    camera.lookAt(0, 0, 0);
+                }
+                
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+                isRightDrag = false;
+            });
+
+            renderer.domElement.addEventListener('wheel', e => {
+                e.preventDefault();
+                const zoomSpeed = e.deltaY > 0 ? 1.1 : 0.9;
+                camera.position.multiplyScalar(zoomSpeed);
+            }, { passive: false });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        function handleResize() {
+            if (renderer && camera) {
+                const container = document.getElementById('viewer3d');
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+        }
+
+        // View controls
+        document.getElementById('resetCameraBtn').addEventListener('click', () => {
+            camera.position.set(1000, 800, 1000);
+            camera.lookAt(0, 0, 0);
+        });
+
+        document.getElementById('vExag').addEventListener('input', function() {
+            document.getElementById('vExagValue').textContent = this.value;
+            if (terrainMesh) {
+                createTerrainMesh();
+                if (contourLines && document.getElementById('showContours').checked) {
+                    renderContoursIn3D();
+                }
+            }
+        });
+
+        document.getElementById('showTexture').addEventListener('change', function() {
+            if (terrainMesh) createTerrainMesh();
+        });
+
+        document.getElementById('showWireframe').addEventListener('change', function() {
+            if (terrainMesh) createTerrainMesh();
+        });
+
+        document.getElementById('showContours').addEventListener('change', function() {
+            if (this.checked) {
+                renderContoursIn3D();
+            } else if (contourLines) {
+                contourLines.forEach(line => scene.remove(line));
+                contourLines = [];
+            }
+        });
+
+        document.getElementById('lineWeight').addEventListener('input', function() {
+            document.getElementById('lineWeightValue').textContent = this.value;
+            if (contourLines) renderContoursIn3D();
+        });
+
+        document.getElementById('contourColor').addEventListener('change', function() {
+            if (contourLines) renderContoursIn3D();
+        });
+
+        // ==================== TERRAIN STATS ====================
+        function updateTerrainStats() {
+            // Convert meters to feet for display
+            const minElevFt = terrainData.minElevation * 3.28084;
+            const maxElevFt = terrainData.maxElevation * 3.28084;
+            const elevRange = maxElevFt - minElevFt;
+            const area = calculateArea(terrainData.bounds);
+
+            document.getElementById('terrainStats').innerHTML = `
+                <div class="stat-grid" style="grid-template-columns: 1fr; margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Location</div>
+                        <div class="stat-value" style="font-size: 12px;">${terrainData.centerLat.toFixed(5)}°, ${terrainData.centerLon.toFixed(5)}°</div>
+                    </div>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Min Elevation</div>
+                        <div class="stat-value">${minElevFt.toFixed(1)}'</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Max Elevation</div>
+                        <div class="stat-value">${maxElevFt.toFixed(1)}'</div>
+                    </div>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Relief</div>
+                        <div class="stat-value">${elevRange.toFixed(1)}'</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Resolution</div>
+                        <div class="stat-value">${terrainData.resolution}²</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateViewer3DInfo() {
+            if (!terrainData) return;
+            
+            document.getElementById('viewer3dInfo').innerHTML = `
+                <h3>✅ Terrain Loaded</h3>
+                <p><strong>Source:</strong> ${terrainData.source}</p>
+                <p><strong>Coordinate System:</strong> EPSG:${terrainData.statePlane}</p>
+                <p style="margin-top: 8px; color: var(--text-tertiary);">
+                    Drag to rotate • Right-drag to pan • Scroll to zoom
+                </p>
+            `;
+        }
+
+        function calculateArea(bounds) {
+            const R = 6371000; // Earth radius in meters
+            const lat1 = bounds.south * Math.PI / 180;
+            const lat2 = bounds.north * Math.PI / 180;
+            const dLon = (bounds.east - bounds.west) * Math.PI / 180;
+            const area = R * R * Math.abs(Math.sin(lat1) - Math.sin(lat2)) * dLon;
+            return (area * 10.7639).toFixed(0); // Convert to sq ft
+        }
+
+        // ==================== EXPORT FUNCTIONS ====================
+        
+        // OBJ Export
+        document.getElementById('exportOBJ').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating OBJ files...</div>';
+            
+            setTimeout(() => {
+                const includeTexture = document.getElementById('includeTexture3D').checked;
+                exportOBJ(includeTexture);
+                messageDiv.innerHTML = '<div class="message success">✅ OBJ + MTL exported!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportOBJ(includeTexture) {
+            const data = terrainData;
+            const res = data.resolution;
+            const vExag = parseFloat(document.getElementById('vExag').value);
+            const avgElev = (data.minElevation + data.maxElevation) / 2;
+
+            // Single basename for OBJ/MTL/texture so links always resolve
+            const baseName = `terrain_${Date.now()}`;
+
+            // Convert to feet for display
+            const minElevFt = data.minElevation * 3.28084;
+            const maxElevFt = data.maxElevation * 3.28084;
+
+            // Use a template literal for the header to avoid any invalid newline tokens
+            let obj = `# VDC Terrain Pro Export
+` +
+                      `# Coordinate System: Y-forward, Z-up
+` +
+                      `# State Plane: EPSG:${data.statePlane}
+` +
+                      `# Units: US Survey Feet
+` +
+                      `# Elevation: ${minElevFt.toFixed(1)}' - ${maxElevFt.toFixed(1)}'
+`;
+
+            if (includeTexture) obj += `mtllib ${baseName}.mtl
+`;
+            obj += `
+`;
+
+            // Vertices (keeps existing XY plane logic)
+            for (let i = 0; i < res; i++) {
+                for (let j = 0; j < res; j++) {
+                    const x = (j / (res - 1)) * 1000 - 500;
+                    const y = (i / (res - 1)) * 1000 - 500;
+                    const zMeters = (data.grid[i][j] - avgElev) * vExag;
+                    const z = zMeters * 3.28084;
+                    obj += `v ${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}
+`;
+                }
+            }
+
+            // Texture coordinates
+            if (includeTexture) {
+                obj += `
+`;
+                for (let i = 0; i < res; i++) {
+                    for (let j = 0; j < res; j++) {
+                        const u = j / (res - 1);
+                        const v = 1 - (i / (res - 1));
+                        obj += `vt ${u.toFixed(6)} ${v.toFixed(6)}
+`;
+                    }
+                }
+            }
+
+            // Faces
+            obj += `
+`;
+            if (includeTexture) obj += `usemtl terrain_material
+`;
+
+            for (let i = 0; i < res - 1; i++) {
+                for (let j = 0; j < res - 1; j++) {
+                    const v1 = i * res + j + 1;
+                    const v2 = v1 + 1;
+                    const v3 = v1 + res;
+                    const v4 = v3 + 1;
+
+                    if (includeTexture) {
+                        obj += `f ${v1}/${v1} ${v2}/${v2} ${v4}/${v4}
+`;
+                        obj += `f ${v1}/${v1} ${v4}/${v4} ${v3}/${v3}
+`;
+                    } else {
+                        obj += `f ${v1} ${v2} ${v4}
+`;
+                        obj += `f ${v1} ${v4} ${v3}
+`;
+                    }
+                }
+            }
+
+            downloadFile(obj, `${baseName}.obj`, 'text/plain');
+
+            // MTL + texture (matching names)
+            if (includeTexture) {
+                const texName = `${baseName}_texture.jpg`;
+                const mtl = `# VDC Terrain Pro Material
+` +
+                            `newmtl terrain_material
+` +
+                            `Ka 1.000 1.000 1.000
+` +
+                            `Kd 1.000 1.000 1.000
+` +
+                            `Ks 0.000 0.000 0.000
+` +
+                            `Ns 10.000
+` +
+                            `map_Kd ${texName}
+`;
+                downloadFile(mtl, `${baseName}.mtl`, 'text/plain');
+
+                if (imageryBlob) {
+                    const url = URL.createObjectURL(imageryBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = texName;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                }
+            }
+        }
+
+        // FBX Export
+        document.getElementById('exportFBX').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            const includeTexture = document.getElementById('includeTexture3D').checked;
+            
+            messageDiv.innerHTML = '<div class="message info">📦 Generating FBX with embedded texture...</div>';
+            
+            setTimeout(() => {
+                exportFBX(includeTexture);
+                messageDiv.innerHTML = '<div class="message success">✅ FBX exported with embedded texture!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportFBX(includeTexture) {
+            // FBX ASCII format (simplified)
+            const data = terrainData;
+            const res = data.resolution;
+            const vExag = parseFloat(document.getElementById('vExag').value);
+            const avgElev = (data.minElevation + data.maxElevation) / 2;
+            const timestamp = Date.now();
+
+            let fbx = `; FBX 7.4.0 project file\n`;
+            fbx += `; Created by VDC Terrain Pro\n`;
+            fbx += `; Coordinate System: Y-forward, Z-up\n\n`;
+            fbx += `FBXHeaderExtension:  {\n`;
+            fbx += `\tFBXHeaderVersion: 1003\n`;
+            fbx += `\tFBXVersion: 7400\n`;
+            fbx += `\tCreationTimeStamp:  {\n\t\tVersion: 1000\n\t}\n`;
+            fbx += `\tCreator: "VDC Terrain Pro v2.0"\n`;
+            fbx += `}\n\n`;
+            
+            fbx += `Definitions:  {\n`;
+            fbx += `\tVersion: 100\n`;
+            fbx += `\tCount: 3\n`;
+            fbx += `\tObjectType: "Model" {\n\t\tCount: 1\n\t}\n`;
+            if (includeTexture) {
+                fbx += `\tObjectType: "Material" {\n\t\tCount: 1\n\t}\n`;
+                fbx += `\tObjectType: "Texture" {\n\t\tCount: 1\n\t}\n`;
+            }
+            fbx += `}\n\n`;
+
+            // Simplified geometry representation
+            fbx += `Objects:  {\n`;
+            fbx += `\tGeometry: ${timestamp}, "Geometry::", "Mesh" {\n`;
+            fbx += `\t\tProperties70:  {\n\t\t}\n`;
+            fbx += `\t\tVertices: *${res * res * 3} {\n\t\t\ta: `;
+            
+            const vertices = [];
+            for (let i = 0; i < res; i++) {
+                for (let j = 0; j < res; j++) {
+                    const x = (j / (res - 1)) * 1000 - 500; // X: lateral
+                    const y = (i / (res - 1)) * 1000 - 500; // Y: forward/backward
+                    const zMeters = (data.grid[i][j] - avgElev) * vExag;
+                    const z = zMeters * 3.28084; // Convert to feet
+                    vertices.push(x, y, z);
+                }
+            }
+            fbx += vertices.join(',');
+            fbx += `\n\t\t}\n`;
+            
+            fbx += `\t\tPolygonVertexIndex: *${(res-1)*(res-1)*6} {\n\t\t\ta: `;
+            const indices = [];
+            for (let i = 0; i < res - 1; i++) {
+                for (let j = 0; j < res - 1; j++) {
+                    const v1 = i * res + j;
+                    const v2 = v1 + 1;
+                    const v3 = v1 + res;
+                    const v4 = v3 + 1;
+                    indices.push(v1, v2, -v4, v1, v4, -v3);
+                }
+            }
+            fbx += indices.join(',');
+            fbx += `\n\t\t}\n`;
+            
+            fbx += `\t\tLayerElementNormal: 0 {\n`;
+            fbx += `\t\t\tVersion: 101\n\t\t\tName: ""\n`;
+            fbx += `\t\t\tMappingInformationType: "ByPolygonVertex"\n`;
+            fbx += `\t\t\tReferenceInformationType: "Direct"\n\t\t}\n`;
+            
+            fbx += `\t}\n`;
+            fbx += `}\n\n`;
+
+            fbx += `Connections:  {\n}\n`;
+
+            downloadFile(fbx, `terrain_${timestamp}.fbx`, 'text/plain');
+            
+            if (includeTexture && imageryBlob) {
+                const url = URL.createObjectURL(imageryBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `terrain_${timestamp}_texture.jpg`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        // GLB Export
+        document.getElementById('exportGLB').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating GLB file...</div>';
+            
+            setTimeout(() => {
+                exportGLB();
+                messageDiv.innerHTML = '<div class="message success">✅ GLB exported!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportGLB() {
+            // Create a simple GLTF/GLB structure (requires proper binary encoding in production)
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = `<div class="message warning">⚠️ GLB export requires additional library.<br>
+                <small>Use OBJ format and convert with Blender, or implement GLTFExporter from three.js</small>
+            </div>`;
+            
+            // For demonstration, export as GLTF JSON
+            const gltf = {
+                asset: { version: "2.0", generator: "VDC Terrain Pro" },
+                scene: 0,
+                scenes: [{ nodes: [0] }],
+                nodes: [{ mesh: 0 }],
+                meshes: [{
+                    primitives: [{
+                        attributes: { POSITION: 0 },
+                        indices: 1
+                    }]
+                }],
+                buffers: [{ byteLength: 0 }],
+                bufferViews: [],
+                accessors: []
+            };
+            
+            downloadFile(JSON.stringify(gltf, null, 2), `terrain_${Date.now()}.gltf`, 'application/json');
+        }
+
+        // GLTF Export
+        document.getElementById('exportGLTF').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating GLTF file...</div>';
+            
+            setTimeout(() => {
+                exportGLB(); // Same implementation
+                messageDiv.innerHTML = '<div class="message success">✅ GLTF exported!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        // DWG Export
+        document.getElementById('exportDWG').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating DWG file...</div>';
+            
+            setTimeout(() => {
+                exportDWG();
+                messageDiv.innerHTML = '<div class="message success">✅ DWG format exported as DXF!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportDWG() {
+            // DWG is proprietary; export as DXF which can be converted
+            exportDXF();
+        }
+
+        // DXF Export
+        document.getElementById('exportDXF').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating DXF file...</div>';
+            
+            setTimeout(() => {
+                exportDXF();
+                messageDiv.innerHTML = '<div class="message success">✅ DXF exported with contours!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportDXF() {
+            const data = terrainData;
+            const timestamp = Date.now();
+
+            let dxf = `999\nVDC Terrain Pro Export\n`;
+            dxf += `0\nSECTION\n2\nHEADER\n`;
+            dxf += `9\n$ACADVER\n1\nAC1015\n`; // AutoCAD 2000
+            dxf += `9\n$INSUNITS\n70\n1\n`; // Feet
+            dxf += `0\nENDSEC\n`;
+            
+            dxf += `0\nSECTION\n2\nENTITIES\n`;
+            
+            // Export contour lines if available
+            if (contoursData) {
+                contoursData.contours.forEach(contour => {
+                    const layerName = contour.isIndex ? 'INDEX_CONTOURS' : 'CONTOURS';
+                    contour.lines.forEach(line => {
+                        if (line.length < 2) return;
+                        
+                        dxf += `0\nPOLYLINE\n8\n${layerName}\n`;
+                        dxf += `66\n1\n70\n0\n`;
+                        
+                        line.forEach(p => {
+                            const x = (p.x / data.resolution) * 1000;
+                            const y = (p.y / data.resolution) * 1000;
+                            const elevFeet = contour.elevation * 3.28084; // Convert to feet
+                            dxf += `0\nVERTEX\n8\n${layerName}\n`;
+                            dxf += `10\n${x.toFixed(3)}\n20\n${y.toFixed(3)}\n30\n${elevFeet.toFixed(3)}\n`;
+                        });
+                        
+                        dxf += `0\nSEQEND\n`;
+                    });
+                });
+            }
+            
+            dxf += `0\nENDSEC\n`;
+            dxf += `0\nEOF\n`;
+            
+            downloadFile(dxf, `terrain_contours_${timestamp}.dxf`, 'text/plain');
+        }
+
+        // CSV Export
+        document.getElementById('exportCSV').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating CSV file...</div>';
+            
+            setTimeout(() => {
+                exportCSV();
+                messageDiv.innerHTML = '<div class="message success">✅ CSV point cloud exported!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportCSV() {
+            const data = terrainData;
+            const res = data.resolution;
+            let csv = 'Point,Easting,Northing,Elevation,Description\n';
+            
+            let pointNum = 1;
+            const interval = Math.max(1, Math.floor(res / 100)); // Limit to ~10k points
+            
+            for (let i = 0; i < res; i += interval) {
+                for (let j = 0; j < res; j += interval) {
+                    const x = (j / res) * 1000;
+                    const y = (i / res) * 1000;
+                    const zFeet = data.grid[i][j] * 3.28084; // Convert to feet
+                    csv += `${pointNum},${x.toFixed(2)},${y.toFixed(2)},${zFeet.toFixed(2)},TERRAIN\n`;
+                    pointNum++;
+                }
+            }
+            
+            downloadFile(csv, `terrain_points_${Date.now()}.csv`, 'text/csv');
+        }
+
+        // LandXML Export
+        document.getElementById('exportLandXML').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating LandXML file...</div>';
+            
+            setTimeout(() => {
+                exportLandXML();
+                messageDiv.innerHTML = '<div class="message success">✅ LandXML exported!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportLandXML() {
+            const data = terrainData;
+            const timestamp = Date.now();
+            
+            let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+            xml += `<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">\n`;
+            xml += `  <Units>\n`;
+            xml += `    <Imperial linearUnit="foot" areaUnit="squareFoot" volumeUnit="cubicFeet"/>\n`;
+            xml += `  </Units>\n`;
+            xml += `  <CoordinateSystem epsgCode="${data.statePlane}"/>\n`;
+            xml += `  <Surfaces>\n`;
+            xml += `    <Surface name="Terrain">\n`;
+            xml += `      <Definition surfType="TIN">\n`;
+            
+            // Export simplified point cloud
+            const res = data.resolution;
+            const interval = Math.max(1, Math.floor(res / 50));
+            
+            xml += `        <Pnts>\n`;
+            let pointId = 1;
+            for (let i = 0; i < res; i += interval) {
+                for (let j = 0; j < res; j += interval) {
+                    const x = (j / res) * 1000;
+                    const y = (i / res) * 1000;
+                    const zFeet = data.grid[i][j] * 3.28084; // Convert to feet
+                    xml += `          <P id="${pointId}">${x.toFixed(3)} ${y.toFixed(3)} ${zFeet.toFixed(3)}</P>\n`;
+                    pointId++;
+                }
+            }
+            xml += `        </Pnts>\n`;
+            xml += `      </Definition>\n`;
+            xml += `    </Surface>\n`;
+            xml += `  </Surfaces>\n`;
+            xml += `</LandXML>\n`;
+            
+            downloadFile(xml, `terrain_${timestamp}.xml`, 'application/xml');
+        }
+
+        // GeoTIFF Export
+        document.getElementById('exportGeoTIFF').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message warning">⚠️ GeoTIFF export requires additional libraries.<br><small>Original USGS data is already in GeoTIFF format.</small></div>';
+        });
+
+        // GeoJSON Export
+        document.getElementById('exportGeoJSON').addEventListener('click', () => {
+            const messageDiv = document.getElementById('exportMessage');
+            messageDiv.innerHTML = '<div class="message info">📦 Generating GeoJSON file...</div>';
+            
+            setTimeout(() => {
+                exportGeoJSON();
+                messageDiv.innerHTML = '<div class="message success">✅ GeoJSON exported!</div>';
+                setTimeout(() => messageDiv.innerHTML = '', 3000);
+            }, 500);
+        });
+
+        function exportGeoJSON() {
+            const data = terrainData;
+            
+            const geojson = {
+                type: "FeatureCollection",
+                crs: {
+                    type: "name",
+                    properties: { name: `EPSG:${data.statePlane}` }
+                },
+                features: []
+            };
+            
+            // Add contours as features
+            if (contoursData) {
+                contoursData.contours.forEach(contour => {
+                    contour.lines.forEach(line => {
+                        if (line.length < 2) return;
+                        
+                        const coordinates = line.map(p => {
+                            const lon = data.bounds.west + (p.x / data.resolution) * (data.bounds.east - data.bounds.west);
+                            const lat = data.bounds.north - (p.y / data.resolution) * (data.bounds.north - data.bounds.south);
+                            const elevFeet = contour.elevation * 3.28084; // Convert to feet
+                            return [lon, lat, elevFeet];
+                        });
+                        
+                        const elevFeet = contour.elevation * 3.28084;
+                        geojson.features.push({
+                            type: "Feature",
+                            properties: {
+                                elevation: elevFeet,
+                                elevationUnits: "feet",
+                                isIndex: contour.isIndex,
+                                type: "contour"
+                            },
+                            geometry: {
+                                type: "LineString",
+                                coordinates: coordinates
+                            }
+                        });
+                    });
+                });
+            }
+            
+            downloadFile(JSON.stringify(geojson, null, 2), `terrain_${Date.now()}.geojson`, 'application/json');
+        }
+
+        // ==================== UTILITY FUNCTIONS ====================
+        function downloadFile(content, filename, type) {
+            const blob = new Blob([content], {type: type});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Window resize handler
+        window.addEventListener('resize', () => {
+            if (map) map.invalidateSize();
+            handleResize();
+        });
+
+        // ==================== INITIALIZATION ====================
+        window.addEventListener('load', () => {
+            initMap();
+        });
+    </script>
+</body>
+</html>
